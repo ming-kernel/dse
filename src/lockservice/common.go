@@ -18,8 +18,7 @@ type LockArgs struct {
 }
 
 type LockReply struct {
-	Seq int64
-	OK  bool
+	OK bool
 }
 
 //
@@ -32,17 +31,16 @@ type UnlockArgs struct {
 }
 
 type UnlockReply struct {
-	Seq int64
-	OK  bool
+	OK bool
 }
 
 type SyncArgs struct {
-	Seq      int64
-	Lockname string
-	Value    bool
+	Seq       int64
+	Lockname  string
+	LockValue bool
+	Reply     bool
 }
 
 type SyncReply struct {
-	Seq int64
-	OK  bool
+	OK bool
 }

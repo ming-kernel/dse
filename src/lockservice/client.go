@@ -1,7 +1,18 @@
 package lockservice
 
 import "net/rpc"
-import "fmt"
+
+// import "fmt"
+
+import "crypto/rand"
+import "math/big"
+
+func nrand() int64 {
+	max := big.NewInt(int64(1) << 62)
+	bigx, _ := rand.Int(rand.Reader, max)
+	x := bigx.Int64()
+	return x
+}
 
 //
 // the lockservice Clerk lives in the client
@@ -62,16 +73,18 @@ func (ck *Clerk) Lock(lockname string) bool {
 	// prepare the arguments.
 	args := &LockArgs{}
 	args.Lockname = lockname
+	args.Seq = nrand()
+
 	var reply LockReply
 
 	// send an RPC request, wait for the reply.
 	ok := call(ck.servers[0], "LockServer.Lock", args, &reply)
 	if ok == false {
-		fmt.Printf("Client: primary failed\n")
+		// fmt.Printf("Client: primary failed\n")
 		// primary server do not reply, call backup server
 		ok = call(ck.servers[1], "LockServer.Lock", args, &reply)
-		fmt.Printf("Client: Lock Backup: loclname = %s, ok = %v, reply.OK = %v\n",
-			args.Lockname, ok, reply.OK)
+		// fmt.Printf("Client: Lock Backup: lockname = %s, ok = %v, reply.OK = %v\n",
+		// args.Lockname, ok, reply.OK)
 		return ok && reply.OK
 	}
 
@@ -88,6 +101,8 @@ func (ck *Clerk) Unlock(lockname string) bool {
 	// prepare the arguments.
 	args := &LockArgs{}
 	args.Lockname = lockname
+	args.Seq = nrand()
+
 	var reply LockReply
 
 	// send an RPC request, wait for the reply.

@@ -30,22 +30,24 @@ type LockServer struct {
 //
 
 // only primary calls this function
-func (ls *LockServer) sync(lockname string, value bool) {
+func (ls *LockServer) sync(seq int64, lockname string, lockvalue bool, reply bool) {
 	args := &SyncArgs{}
+	args.Seq = seq
 	args.Lockname = lockname
-	args.Value = value
-	var reply SyncReply
+	args.LockValue = lockvalue
+	args.Reply = reply
+	var sync_reply SyncReply
 
 	// fmt.Printf("Primary sync lockname = %s, value = %v\n", args.Lockname, args.Value)
 
-	call(ls.backup, "LockServer.Sync", args, &reply)
+	call(ls.backup, "LockServer.Sync", args, &sync_reply)
 }
 
 func (ls *LockServer) Sync(args *SyncArgs, reply *SyncReply) error {
-	fmt.Printf("Sync lockname = %s, value = %v\n", args.Lockname, args.Value)
-	ls.locks[args.Lockname] = args.Value
+	// fmt.Printf("Sync lockname = %s, value = %v\n", args.Lockname, args.LockValue)
+	ls.locks[args.Lockname] = args.LockValue
 	ls.last_seq = args.Seq
-	ls.last_state = ls.locks[args.Lockname]
+	ls.last_reply = args.Reply
 	return nil
 }
 
@@ -55,29 +57,35 @@ func (ls *LockServer) Lock(args *LockArgs, reply *LockReply) error {
 
 	// Your code here.
 	if ls.am_primary {
-		fmt.Printf("Primary: Lock: lockname = %s\n", args.Lockname)
+		// fmt.Printf("Primary: Lock: lockname = %s, seq = %v\n",
+		// 	args.Lockname, args.Seq)
 	} else {
-		fmt.Printf("Backup: Lock: lockname = %s\n", args.Lockname)
+		// fmt.Printf("Backup: Lock: lockname = %s, seq = %v, last_seq = %v\n",
+		// 	args.Lockname, args.Seq, ls.last_seq)
 	}
 
 	ls.mu.Lock()
 	defer ls.mu.Unlock()
 
-	locked, _ := ls.locks[args.Lockname]
-
 	// backup checks sequence number
 	if !ls.am_primary && args.Seq == ls.last_seq {
-		locked = ls.last_state
+		// fmt.Printf("Backup: last_reply = %v\n", ls.last_reply)
+		reply.OK = ls.last_reply
+		return nil
 	}
+
+	locked, _ := ls.locks[args.Lockname]
 
 	if locked {
 		reply.OK = false
 	} else {
 		reply.OK = true
 		ls.locks[args.Lockname] = true
-		if ls.am_primary {
-			ls.sync(args.Lockname, true)
-		}
+	}
+
+	// sync current lock state, and current reply
+	if ls.am_primary {
+		ls.sync(args.Seq, args.Lockname, ls.locks[args.Lockname], reply.OK)
 	}
 
 	return nil
@@ -92,18 +100,24 @@ func (ls *LockServer) Unlock(args *UnlockArgs, reply *UnlockReply) error {
 	ls.mu.Lock()
 	defer ls.mu.Unlock()
 
+	// backup checks sequence number
+	if !ls.am_primary && args.Seq == ls.last_seq {
+		reply.OK = ls.last_reply
+		return nil
+	}
+
 	locked, _ := ls.locks[args.Lockname]
 
 	if locked {
 		reply.OK = true
 		ls.locks[args.Lockname] = false
-		if ls.am_primary {
-			ls.sync(args.Lockname, false)
-		}
 	} else {
 		reply.OK = false
 	}
 
+	if ls.am_primary {
+		ls.sync(args.Seq, args.Lockname, ls.locks[args.Lockname], reply.OK)
+	}
 	return nil
 }
 
@@ -183,11 +197,11 @@ func StartServer(primary string, backup string, am_primary bool) *LockServer {
 					// test_test.go depends on this two seconds.
 					go func() {
 						time.Sleep(2 * time.Second)
-						if ls.am_primary {
-							fmt.Printf("Primary: to die\n")
-						} else {
-							fmt.Printf("Backup: to die\n")
-						}
+						// if ls.am_primary {
+						// 	fmt.Printf("Primary: to die\n")
+						// } else {
+						// 	fmt.Printf("Backup: to die\n")
+						// }
 
 						conn.Close()
 					}()
