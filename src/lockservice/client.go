@@ -1,23 +1,23 @@
 package lockservice
 
 import "net/rpc"
+import "fmt"
 
 //
 // the lockservice Clerk lives in the client
 // and maintains a little state.
 //
 type Clerk struct {
-  servers [2]string // primary port, backup port
-  // Your definitions here.
+	servers [2]string // primary port, backup port
+	// Your definitions here.
 }
 
-
 func MakeClerk(primary string, backup string) *Clerk {
-  ck := new(Clerk)
-  ck.servers[0] = primary
-  ck.servers[1] = backup
-  // Your initialization code here.
-  return ck
+	ck := new(Clerk)
+	ck.servers[0] = primary
+	ck.servers[1] = backup
+	// Your initialization code here.
+	return ck
 }
 
 //
@@ -37,18 +37,18 @@ func MakeClerk(primary string, backup string) *Clerk {
 // please don't change this function.
 //
 func call(srv string, rpcname string,
-          args interface{}, reply interface{}) bool {
-  c, errx := rpc.Dial("unix", srv)
-  if errx != nil {
-    return false
-  }
-  defer c.Close()
-    
-  err := c.Call(rpcname, args, reply)
-  if err == nil {
-    return true
-  }
-  return false
+	args interface{}, reply interface{}) bool {
+	c, errx := rpc.Dial("unix", srv)
+	if errx != nil {
+		return false
+	}
+	defer c.Close()
+
+	err := c.Call(rpcname, args, reply)
+	if err == nil {
+		return true
+	}
+	return false
 }
 
 //
@@ -59,20 +59,24 @@ func call(srv string, rpcname string,
 // you will have to modify this function.
 //
 func (ck *Clerk) Lock(lockname string) bool {
-  // prepare the arguments.
-  args := &LockArgs{}
-  args.Lockname = lockname
-  var reply LockReply
-  
-  // send an RPC request, wait for the reply.
-  ok := call(ck.servers[0], "LockServer.Lock", args, &reply)
-  if ok == false {
-    return false
-  }
-  
-  return reply.OK
-}
+	// prepare the arguments.
+	args := &LockArgs{}
+	args.Lockname = lockname
+	var reply LockReply
 
+	// send an RPC request, wait for the reply.
+	ok := call(ck.servers[0], "LockServer.Lock", args, &reply)
+	if ok == false {
+		fmt.Printf("Client: primary failed\n")
+		// primary server do not reply, call backup server
+		ok = call(ck.servers[1], "LockServer.Lock", args, &reply)
+		fmt.Printf("Client: Lock Backup: loclname = %s, ok = %v, reply.OK = %v\n",
+			args.Lockname, ok, reply.OK)
+		return ok && reply.OK
+	}
+
+	return reply.OK
+}
 
 //
 // ask the lock service to unlock a lock.
@@ -81,8 +85,18 @@ func (ck *Clerk) Lock(lockname string) bool {
 //
 
 func (ck *Clerk) Unlock(lockname string) bool {
+	// prepare the arguments.
+	args := &LockArgs{}
+	args.Lockname = lockname
+	var reply LockReply
 
-  // Your code here.
+	// send an RPC request, wait for the reply.
+	ok := call(ck.servers[0], "LockServer.Unlock", args, &reply)
+	if ok == false {
+		ok = call(ck.servers[1], "LockServer.Unlock", args, &reply)
+		return ok && reply.OK
+		// return false
+	}
 
-  return false
+	return reply.OK
 }
